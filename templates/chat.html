@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Chat</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .chat-container {
+            width: 90%;
+            max-width: 800px;
+            height: 90vh;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .chat-title {
+            font-size: 24px;
+            font-weight: bold;
+            flex: 1;
+            text-align: center;
+        }
+        .nav-button {
+            padding: 8px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+        .nav-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: translateY(-2px);
+        }
+        .nav-button:active {
+            transform: translateY(0);
+        }
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f5f5f5;
+        }
+        .message {
+            margin-bottom: 15px;
+            animation: slideIn 0.3s ease;
+            clear: both;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .message-content {
+            background: white;
+            padding: 12px 16px;
+            border-radius: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            max-width: 70%;
+            display: inline-block;
+            word-wrap: break-word;
+        }
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            float: right;
+        }
+        .message.user {
+            text-align: right;
+        }
+        .message.ai .message-content {
+            background: #ffffff;
+            border: 2px solid #e0e0e0;
+        }
+        .username {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #667eea;
+        }
+        .message.user .username {
+            color: white;
+        }
+        .message.ai .username {
+            color: #764ba2;
+        }
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+        }
+        input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        input:focus {
+            border-color: #667eea;
+        }
+        input:disabled {
+            background: #f5f5f5;
+            cursor: not-allowed;
+        }
+        button {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 8px 20px;
+            background: #f0f0f0;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .typing-indicator {
+            display: none;
+            padding: 10px;
+            color: #666;
+            font-style: italic;
+            font-size: 14px;
+        }
+        .typing-indicator.show {
+            display: block;
+        }
+        .typing-dots {
+            display: inline-block;
+        }
+        .typing-dots span {
+            animation: blink 1.4s infinite;
+            animation-fill-mode: both;
+        }
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        @keyframes blink {
+            0%, 80%, 100% {
+                opacity: 0;
+            }
+            40% {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <button class="nav-button" onclick="goHome()">Home</button>
+            <div class="chat-title">🤖 AI Chat</div>
+        </div>
+        <div class="status" id="status">Connecting...</div>
+        <div class="messages" id="messages">
+            <div class="message ai">
+                <div class="message-content">
+                    <div class="username">🤖 AI</div>
+                    <div>Hello! I'm your AI assistant. How can I help you today?</div>
+                </div>
+            </div>
+        </div>
+        <div class="typing-indicator" id="typingIndicator">
+            🤖 AI is thinking<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>
+        </div>
+        <div class="input-area">
+            <input type="text" id="messageInput" placeholder="Type your message...">
+            <button id="sendBtn" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        function goHome() {
+            window.location.href = "{{ url_for('index') }}";
+        }
+
+        const socket = io();
+
+        let isWaitingForResponse = false;
+
+        socket.on('connect', function() {
+            document.getElementById('status').textContent = 'Connected';
+            document.getElementById('status').className = 'status connected';
+        });
+
+        socket.on('disconnect', function() {
+            document.getElementById('status').textContent = 'Disconnected';
+            document.getElementById('status').className = 'status';
+        });
+
+        socket.on('ai_response', function(data) {
+            hideTypingIndicator();
+            addMessage('🤖 AI Agent', data.message, false, 'ai');
+            isWaitingForResponse = false;
+            enableInput();
+        });
+
+        socket.on('ai_response_chunk', function(data) {
+            hideTypingIndicator();
+            appendToLastMessage(data.chunk);
+        });
+
+        socket.on('ai_response_complete', function(data) {
+            isWaitingForResponse = false;
+            enableInput();
+        });
+
+        socket.on('previous_messages', function(data) {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = '';
+
+            data.messages.forEach(msg => {
+                addMessage(
+                    msg.role === 'user' ? 'You' : '🤖 AI Agent',
+                    msg.content,
+                    msg.role === 'user',
+                    msg.role
+                );
+            });
+        });
+
+        socket.on('error', function(data) {
+            hideTypingIndicator();
+            addMessage('❌ System', data.message, new Date().toISOString(), false, 'ai');
+            isWaitingForResponse = false;
+            enableInput();
+        });
+
+        function addMessage(username, message, isUser, role) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + role;
+
+            let lastMessage = document.getElementsByClassName('message');
+
+            messageDiv.setAttribute('data-message-id', lastMessage.length + 1);
+
+            messageDiv.innerHTML = `
+                <div class="message-content">
+                    <div class="username">${username}</div>
+                    <div class="message-text">${message}</div>
+                </div>
+            `;
+
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function appendToLastMessage(chunk) {
+            chunk = chunk.replace(/\n/g, "<br />")
+            const messagesDiv = document.getElementById('messages');
+            let lastMessage = document.getElementsByClassName('message');
+
+            if (lastMessage[lastMessage.length - 1].className == "message user") {
+                // Create new message if it doesn't exist
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message ai';
+
+                messageDiv.innerHTML = `
+                    <div class="message-content">
+                        <div class="username">🤖 AI Agent</div>
+                        <div class="message-text">${chunk}</div>
+                    </div>
+                `;
+
+                messagesDiv.appendChild(messageDiv);
+            } else {
+                // Append to existing message
+                const textDiv = lastMessage[lastMessage.length - 1].querySelector('.message-text');
+                textDiv.innerHTML = textDiv.innerHTML + chunk
+            }
+
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            document.getElementById('typingIndicator').className = 'typing-indicator show';
+        }
+
+        function hideTypingIndicator() {
+            document.getElementById('typingIndicator').className = 'typing-indicator';
+        }
+
+        function disableInput() {
+            document.getElementById('messageInput').disabled = true;
+            document.getElementById('sendBtn').disabled = true;
+        }
+
+        function enableInput() {
+            document.getElementById('messageInput').disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('messageInput').focus();
+        }
+
+        function sendMessage() {
+            if (isWaitingForResponse) return;
+
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+
+            if (message) {
+                addMessage('You', message, true, 'user');
+
+                socket.emit('send_message', {
+                    message: message
+                });
+
+                messageInput.value = '';
+                isWaitingForResponse = true;
+                disableInput();
+                showTypingIndicator();
+            }
+        }
+
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !isWaitingForResponse) {
+                sendMessage();
+            }
+        });
+
+        // Request previous messages on load
+        socket.emit('get_messages');
+    </script>
+</body>
+</html>

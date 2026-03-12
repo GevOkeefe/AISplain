@@ -1,0 +1,8 @@
+venv/
+.env
+.idea/
+__pycache__/
+var/files/*
+!var/files/placeholder
+model/*
+!model/placeholder
